@@ -61,7 +61,7 @@ export default function IntervalReportPage() {
       <h1>Interval Report</h1>
 
       <div className="card no-print">
-        <div className="inline-fields">
+        <div className="form-grid">
           <div>
             <label htmlFor="report-start">Start date</label>
             <input
@@ -82,7 +82,7 @@ export default function IntervalReportPage() {
               onChange={(e) => setEndDate(e.target.value)}
             />
           </div>
-          <button className="primary-btn" onClick={runReport}>
+          <button className="primary-btn compact-btn" onClick={runReport}>
             Run report
           </button>
         </div>
@@ -93,13 +93,13 @@ export default function IntervalReportPage() {
           <strong>Range:</strong> {appliedRange.startDate} to {appliedRange.endDate}
         </div>
         <div className="toolbar no-print">
-          <button className="secondary-btn" onClick={() => window.print()}>
+          <button className="secondary-btn compact-btn" onClick={() => window.print()}>
             Print
           </button>
-          <button className="secondary-btn" onClick={exportCsv} disabled={rows.length === 0}>
+          <button className="secondary-btn compact-btn" onClick={exportCsv} disabled={rows.length === 0}>
             Export CSV
           </button>
-          <button className="secondary-btn" onClick={() => void exportJson()}>
+          <button className="secondary-btn compact-btn" onClick={() => void exportJson()}>
             Export JSON
           </button>
         </div>
@@ -107,7 +107,7 @@ export default function IntervalReportPage() {
         {rows.length === 0 ? (
           <div className="empty">No sessions in selected interval.</div>
         ) : (
-          <table className="data-table">
+          <table className="data-table daily-summary-table">
             <thead>
               <tr>
                 <th>Project</th>

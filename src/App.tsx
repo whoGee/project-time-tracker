@@ -10,7 +10,6 @@ export default function App() {
       <header className="app-header no-print">
         <div className="brand">
           <div className="brand-title">Project Time Tracker</div>
-          <div className="brand-subtitle">single-active, timestamp-based tracking</div>
         </div>
 
         <nav className="nav-list">
