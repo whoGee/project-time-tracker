@@ -102,3 +102,24 @@ Purpose: track all updates before each commit and deployment.
 
 ### Notes
 - Execute `npm run deploy` after commit is pushed.
+
+## 2026-03-06 23:25 (local) - commit
+
+### Summary
+- Restored all main routes that were replaced by placeholders and shipped backup/security prep notes.
+
+### Changes
+- `src/routes/TrackerPage.tsx`: restored full tracker UI (active timer, project switching, add/remove project flow).
+- `src/routes/IntervalReportPage.tsx`: restored date-range report, print, CSV/JSON export.
+- `src/routes/SettingsPage.tsx`: restored settings features (overview, JSON backup export/import, clear local data).
+- `src/lib/db.ts`: added `clearAllData` and `importAllData` helpers.
+- `src/context/trackerContextShared.ts`: added context API for clear/import.
+- `src/context/TrackerContext.tsx`: wired clear/import to IndexedDB and in-memory state.
+- `forNextRelease.md`: added security audit findings and next-release hardening recommendations.
+
+### Verification
+- `npm run lint`: pass
+- `npm run build`: pass
+
+### Notes
+- Data remains browser-local in IndexedDB and isolated per origin/profile.

@@ -6,11 +6,13 @@ import {
   type ReactNode,
 } from "react";
 import {
+  clearAllData as clearAllDbData,
   deleteSession,
   deleteSessionsByDateKey,
   deleteProject,
   exportAllData,
   getMetaState,
+  importAllData,
   listProjects,
   listSessions,
   putProject,
@@ -19,7 +21,7 @@ import {
 } from "../lib/db";
 import { TrackerContext, type TrackerContextValue } from "./trackerContextShared";
 import { toDateKey } from "../lib/time";
-import type { ActiveSession, Project, Session } from "../types";
+import type { ActiveSession, MetaState, Project, Session } from "../types";
 
 const HEARTBEAT_EVERY_MS = 15_000;
 
@@ -197,6 +199,23 @@ export function TrackerProvider({ children }: { children: ReactNode }) {
     setSessions((prev) => prev.filter((session) => session.dateKey !== dateKey));
   }, []);
 
+  const clearAllData = useCallback(async () => {
+    await clearAllDbData();
+    setProjects([]);
+    setSessions([]);
+    setActiveSession(null);
+  }, []);
+
+  const importFullData = useCallback(
+    async (nextProjects: Project[], nextSessions: Session[], nextMeta: MetaState) => {
+      await importAllData(nextProjects, nextSessions, nextMeta);
+      setProjects([...nextProjects].sort((a, b) => a.createdAt - b.createdAt));
+      setSessions([...nextSessions].sort((a, b) => b.startTs - a.startTs));
+      setActiveSession(nextMeta.activeSession ?? null);
+    },
+    []
+  );
+
   const activeElapsedSec = useMemo(() => {
     if (!activeSession) {
       return 0;
@@ -224,6 +243,8 @@ export function TrackerProvider({ children }: { children: ReactNode }) {
     deleteSessionRecord,
     deleteSessionsForDate,
     exportFullData: exportAllData,
+    clearAllData,
+    importFullData,
   };
 
   return <TrackerContext.Provider value={value}>{children}</TrackerContext.Provider>;

@@ -1,6 +1,6 @@
 import { createContext } from "react";
 import { exportAllData } from "../lib/db";
-import type { ActiveSession, Project, Session } from "../types";
+import type { ActiveSession, MetaState, Project, Session } from "../types";
 
 export interface TrackerContextValue {
   ready: boolean;
@@ -17,6 +17,8 @@ export interface TrackerContextValue {
   deleteSessionRecord: (sessionId: string) => Promise<void>;
   deleteSessionsForDate: (dateKey: string) => Promise<void>;
   exportFullData: typeof exportAllData;
+  clearAllData: () => Promise<void>;
+  importFullData: (projects: Project[], sessions: Session[], meta: MetaState) => Promise<void>;
 }
 
 export const TrackerContext = createContext<TrackerContextValue | null>(null);

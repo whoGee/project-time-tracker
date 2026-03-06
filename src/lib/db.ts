@@ -126,3 +126,40 @@ export async function exportAllData(): Promise<{
 
   return { projects, sessions, meta };
 }
+
+export async function clearAllData(): Promise<void> {
+  const db = await dbPromise;
+  const tx = db.transaction(["projects", "sessions", "meta"], "readwrite");
+  await Promise.all([
+    tx.objectStore("projects").clear(),
+    tx.objectStore("sessions").clear(),
+    tx.objectStore("meta").clear(),
+  ]);
+  await tx.done;
+}
+
+export async function importAllData(
+  projects: Project[],
+  sessions: Session[],
+  meta: MetaState
+): Promise<void> {
+  const db = await dbPromise;
+  const tx = db.transaction(["projects", "sessions", "meta"], "readwrite");
+
+  await Promise.all([
+    tx.objectStore("projects").clear(),
+    tx.objectStore("sessions").clear(),
+    tx.objectStore("meta").clear(),
+  ]);
+
+  for (const project of projects) {
+    await tx.objectStore("projects").put(project);
+  }
+
+  for (const session of sessions) {
+    await tx.objectStore("sessions").put(session);
+  }
+
+  await tx.objectStore("meta").put(meta.activeSession ?? null, "activeSession");
+  await tx.done;
+}

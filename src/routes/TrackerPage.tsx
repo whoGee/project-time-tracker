@@ -1,12 +1,12 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { type FormEvent, useMemo, useState } from "react";
 import { useTracker } from "../context/useTracker";
-import { formatHhMmSs } from "../lib/time";
+import { formatHhMmSs, todayDateKey } from "../lib/time";
 
 export default function TrackerPage() {
   const {
     ready,
     projects,
-    activeSession,
+    sessions,
     activeProject,
     activeElapsedSec,
     addProject,
@@ -14,130 +14,166 @@ export default function TrackerPage() {
     switchProject,
     stopTracking,
   } = useTracker();
-  const [projectIdInput, setProjectIdInput] = useState("");
-  const [projectNameInput, setProjectNameInput] = useState("");
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [showAddProject, setShowAddProject] = useState(false);
+  const [newProjectId, setNewProjectId] = useState("");
+  const [newProjectName, setNewProjectName] = useState("");
+  const [error, setError] = useState("");
 
-  const duplicateProjectId = useMemo(
-    () => projects.some((project) => project.id === projectIdInput.trim()),
-    [projects, projectIdInput]
+  const todaySessions = useMemo(
+    () => sessions.filter((session) => session.dateKey === todayDateKey()),
+    [sessions]
   );
 
   async function handleAddProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (duplicateProjectId) {
+
+    const id = newProjectId.trim();
+    const name = newProjectName.trim();
+
+    if (!id || !name) {
+      setError("Project id and name are required.");
       return;
     }
-    await addProject(projectIdInput, projectNameInput);
-    setProjectIdInput("");
-    setProjectNameInput("");
-    setShowAddModal(false);
+    if (projects.some((project) => project.id === id)) {
+      setError("Project id already exists.");
+      return;
+    }
+
+    setError("");
+    await addProject(id, name);
+    setNewProjectId("");
+    setNewProjectName("");
+    setShowAddProject(false);
   }
 
-  if (!ready) {
-    return <div>Loading tracker...</div>;
+  async function handleRemoveProject(projectId: string) {
+    const ok = window.confirm(`Remove project "${projectId}"?`);
+    if (!ok) {
+      return;
+    }
+    await removeProject(projectId);
   }
 
   return (
     <section>
-      <div className="section-title-row">
-        <h1>Tracker</h1>
-        <button
-          className="round-plus-btn no-print"
-          aria-label="Add new project"
-          onClick={() => setShowAddModal(true)}
-        >
-          +
-        </button>
-      </div>
+      <h1>Tracker</h1>
 
-      <div className={`card tracking-banner ${activeSession ? "active" : "inactive"}`}>
-        <div>
-          <div className="muted">Currently tracking</div>
-          <div className="tracking-project">{activeProject ? activeProject.name : "Nothing active"}</div>
-        </div>
-        <div className="timer">{formatHhMmSs(activeElapsedSec)}</div>
-        <button className="secondary-btn" onClick={() => void stopTracking()} disabled={!activeSession}>
-          Stop
-        </button>
-      </div>
-
-      <h2>Projects</h2>
-      {projects.length === 0 ? <div className="empty">No projects yet. Press + to add one.</div> : null}
-      <div className="project-grid">
-        {projects.map((project) => {
-          const isActive = activeSession?.projectId === project.id;
-          return (
-            <div
-              key={project.id}
-              className={`project-tile ${isActive ? "active" : "inactive"}`}
-              role="button"
-              tabIndex={0}
-              onClick={() => void switchProject(project.id)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  void switchProject(project.id);
-                }
-              }}
-            >
-              <div className="tile-inline">
-                <strong>{project.id}</strong>
-                <span>{project.name}</span>
-              </div>
-              <div className="tile-actions">
-                <span className="tile-status">{isActive ? "Active" : "Inactive"}</span>
-                <button
-                  className="mini-btn danger-link"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void removeProject(project.id);
-                  }}
-                >
-                  Remove
-                </button>
-              </div>
+      <div className={`card tracking-banner ${activeProject ? "active" : "inactive"}`}>
+        {activeProject ? (
+          <>
+            <div className="tracking-project">
+              {activeProject.id} - {activeProject.name}
             </div>
-          );
-        })}
+            <div className="timer">{formatHhMmSs(activeElapsedSec)}</div>
+            <button className="secondary-btn compact-btn no-print" onClick={() => void stopTracking()}>
+              Stop
+            </button>
+          </>
+        ) : (
+          <div className="muted">No active project.</div>
+        )}
       </div>
 
-      {showAddModal ? (
-        <div className="modal-backdrop no-print" onClick={() => setShowAddModal(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-title">Add Project</div>
-            <form className="form-grid" onSubmit={handleAddProject}>
-              <div>
-                <label htmlFor="project-id">Project ID</label>
-                <input
-                  id="project-id"
-                  value={projectIdInput}
-                  onChange={(e) => setProjectIdInput(e.target.value)}
-                  placeholder="e.g. 1024"
-                  required
-                />
-              </div>
-              <div>
-                <label htmlFor="project-name">Project name</label>
-                <input
-                  id="project-name"
-                  value={projectNameInput}
-                  onChange={(e) => setProjectNameInput(e.target.value)}
-                  placeholder="e.g. New Website"
-                  required
-                />
-              </div>
-              <button className="primary-btn" type="submit" disabled={duplicateProjectId}>
-                Add project
+      <div className="card no-print">
+        <div className="section-title-row">
+          <h2 className="compact-heading">Projects</h2>
+          <button
+            className="round-plus-btn"
+            aria-label="Add project"
+            onClick={() => {
+              setError("");
+              setShowAddProject((prev) => !prev);
+            }}
+          >
+            +
+          </button>
+        </div>
+
+        {showAddProject ? (
+          <form className="form-grid" onSubmit={(event) => void handleAddProject(event)}>
+            <div>
+              <label htmlFor="project-id">Project id</label>
+              <input
+                id="project-id"
+                value={newProjectId}
+                onChange={(event) => setNewProjectId(event.target.value)}
+                placeholder="e.g. PRJ-101"
+              />
+            </div>
+            <div>
+              <label htmlFor="project-name">Project name</label>
+              <input
+                id="project-name"
+                value={newProjectName}
+                onChange={(event) => setNewProjectName(event.target.value)}
+                placeholder="e.g. Customer redesign"
+              />
+            </div>
+            {error ? <div className="error-text">{error}</div> : null}
+            <div className="inline-fields">
+              <button className="primary-btn compact-btn" type="submit">
+                Add
               </button>
-              <button className="secondary-btn" type="button" onClick={() => setShowAddModal(false)}>
+              <button
+                className="secondary-btn compact-btn"
+                type="button"
+                onClick={() => {
+                  setShowAddProject(false);
+                  setError("");
+                }}
+              >
                 Cancel
               </button>
-              {duplicateProjectId ? <div className="error-text">Project ID already exists.</div> : null}
-            </form>
-          </div>
-        </div>
-      ) : null}
+            </div>
+          </form>
+        ) : null}
+      </div>
+
+      <div className="project-grid">
+        {!ready ? (
+          <div className="card muted">Loading projects...</div>
+        ) : projects.length === 0 ? (
+          <div className="card empty">No projects yet. Use + to add your first project.</div>
+        ) : (
+          projects.map((project) => {
+            const isActive = project.id === activeProject?.id;
+            return (
+              <div
+                key={project.id}
+                className={`project-tile ${isActive ? "active" : "inactive"}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => void switchProject(project.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    void switchProject(project.id);
+                  }
+                }}
+              >
+                <div className="tile-inline">
+                  {project.id} - {project.name}
+                </div>
+                <div className="tile-actions">
+                  <span className="tile-status">{isActive ? "Active" : "Switch to start"}</span>
+                  <button
+                    className="mini-btn"
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleRemoveProject(project.id);
+                    }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <div className="card muted">Today sessions: {todaySessions.length}</div>
     </section>
   );
 }
