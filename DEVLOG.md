@@ -123,3 +123,19 @@ Purpose: track all updates before each commit and deployment.
 
 ### Notes
 - Data remains browser-local in IndexedDB and isolated per origin/profile.
+
+## 2026-03-06 23:27 (local) - deploy
+
+### Summary
+- Deployed latest fixes to GitHub Pages.
+
+### Changes
+- Deploy target: `gh-pages` branch from local `dist/` build.
+- Includes restored Tracker/Interval/Settings pages and security notes file.
+
+### Verification
+- `npm run predeploy`: pass
+- `npm run deploy`: pass (`Published`)
+
+### Notes
+- Source branch pushed: `main` at commit `457f9c0`.
