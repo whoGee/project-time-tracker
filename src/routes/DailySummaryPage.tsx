@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTracker } from "../context/useTracker";
-import { downloadText, fullDataToJson, summaryRowsToCsv } from "../lib/export";
+import { downloadBlob, downloadText, fullDataToJson, summaryRowsToXlsx } from "../lib/export";
 import { buildSummaryRows, totalHours } from "../lib/reporting";
 import { todayDateKey } from "../lib/time";
 
@@ -28,9 +28,9 @@ export default function DailySummaryPage() {
     downloadText(`tracker-export-${dateKey}.json`, json, "application/json");
   }
 
-  function exportCsv() {
-    const csv = summaryRowsToCsv(rows, `Daily summary ${dateKey}`);
-    downloadText(`daily-summary-${dateKey}.csv`, csv, "text/csv;charset=utf-8");
+  function exportXlsx() {
+    const workbook = summaryRowsToXlsx(rows, `Daily summary ${dateKey}`);
+    downloadBlob(`daily-summary-${dateKey}.xlsx`, workbook);
   }
 
   async function eraseDay() {
@@ -52,8 +52,8 @@ export default function DailySummaryPage() {
 
       <div className="card">
         <div className="toolbar no-print">
-          <button className="secondary-btn compact-btn" onClick={exportCsv} disabled={rows.length === 0}>
-            Export CSV
+          <button className="secondary-btn compact-btn" onClick={exportXlsx} disabled={rows.length === 0}>
+            Export XLSX
           </button>
           <button className="secondary-btn compact-btn" onClick={() => void exportJson()}>
             Export JSON

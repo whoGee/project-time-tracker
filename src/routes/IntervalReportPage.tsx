@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTracker } from "../context/useTracker";
-import { downloadText, fullDataToJson, summaryRowsToCsv } from "../lib/export";
+import { downloadBlob, downloadText, fullDataToJson, summaryRowsToXlsx } from "../lib/export";
 import { buildSummaryRows, totalHours } from "../lib/reporting";
 import { todayDateKey } from "../lib/time";
 
@@ -42,9 +42,9 @@ export default function IntervalReportPage() {
     setAppliedEndDate(endDate);
   }
 
-  function exportCsv() {
-    const csv = summaryRowsToCsv(rows, `Interval report ${scopeLabel}`);
-    downloadText(`interval-report-${appliedStartDate}-to-${appliedEndDate}.csv`, csv, "text/csv;charset=utf-8");
+  function exportXlsx() {
+    const workbook = summaryRowsToXlsx(rows, `Interval report ${scopeLabel}`);
+    downloadBlob(`interval-report-${appliedStartDate}-to-${appliedEndDate}.xlsx`, workbook);
   }
 
   async function exportJson() {
@@ -86,8 +86,8 @@ export default function IntervalReportPage() {
 
       <div className="card print-area">
         <div className="toolbar no-print">
-          <button className="secondary-btn compact-btn" onClick={exportCsv} disabled={rows.length === 0}>
-            Export CSV
+          <button className="secondary-btn compact-btn" onClick={exportXlsx} disabled={rows.length === 0}>
+            Export XLSX
           </button>
           <button className="secondary-btn compact-btn" onClick={() => void exportJson()}>
             Export JSON

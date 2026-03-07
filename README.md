@@ -31,7 +31,7 @@ Lightweight single-user tracker for switching between multiple projects during t
   - total hours
   - print button + print stylesheet
 - Exports:
-  - CSV for summary tables
+  - XLSX for summary tables
   - JSON full export (`projects`, `sessions`, `meta`)
 
 ## Run locally

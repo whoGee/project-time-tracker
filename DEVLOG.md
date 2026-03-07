@@ -139,3 +139,38 @@ Purpose: track all updates before each commit and deployment.
 
 ### Notes
 - Source branch pushed: `main` at commit `457f9c0`.
+
+## 2026-03-07 07:59 (local) - commit
+
+### Summary
+- Replaced summary CSV exports with XLSX exports.
+
+### Changes
+- `src/lib/export.ts`: replaced CSV formatter with XLSX workbook export helper and added blob download helper.
+- `src/routes/DailySummaryPage.tsx`: switched summary export action/button from CSV to XLSX.
+- `src/routes/IntervalReportPage.tsx`: switched summary export action/button from CSV to XLSX.
+- `package.json`, `package-lock.json`: added `xlsx` dependency.
+- `README.md`: updated export format documentation from CSV to XLSX.
+
+### Verification
+- `npm run lint`: pass
+- `npm run build`: pass
+
+### Notes
+- JSON full export remains unchanged.
+
+## 2026-03-07 07:59 (local) - deploy
+
+### Summary
+- Deploy updated XLSX export build to GitHub Pages.
+
+### Changes
+- Deploy target: `gh-pages` branch from local `dist/` build.
+- Includes replacement of summary CSV exports with XLSX exports.
+
+### Verification
+- `npm run predeploy`: pass
+- `npm run deploy`: pass (`Published`)
+
+### Notes
+- Source branch push follows deployment in this release step.
