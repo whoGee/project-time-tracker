@@ -1,5 +1,16 @@
 import type { Project, Session, SummaryRow } from "../types";
 
+export function compareProjectIds(a: string, b: string): number {
+  const aStartsWithNumber = /^[0-9]/.test(a);
+  const bStartsWithNumber = /^[0-9]/.test(b);
+
+  if (aStartsWithNumber !== bStartsWithNumber) {
+    return aStartsWithNumber ? -1 : 1;
+  }
+
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+}
+
 export function buildSummaryRows(projects: Project[], sessions: Session[]): SummaryRow[] {
   const byProject = new Map<string, number>();
   for (const session of sessions) {
@@ -25,7 +36,7 @@ export function buildSummaryRows(projects: Project[], sessions: Session[]): Summ
     };
   });
 
-  rows.sort((a, b) => b.durationSec - a.durationSec);
+  rows.sort((a, b) => compareProjectIds(a.projectId, b.projectId));
   return rows;
 }
 

@@ -1,29 +1,10 @@
 import { type ChangeEvent, useMemo, useState } from "react";
 import { useTracker } from "../context/useTracker";
 import { downloadText, fullDataToJson } from "../lib/export";
-import type { MetaState, Project, Session } from "../types";
-
-interface ImportedData {
-  projects: Project[];
-  sessions: Session[];
-  meta: MetaState;
-}
-
-function parseImportedData(input: string): ImportedData | null {
-  const raw = JSON.parse(input) as Partial<ImportedData> & { meta?: Partial<MetaState> };
-
-  if (!Array.isArray(raw.projects) || !Array.isArray(raw.sessions)) {
-    return null;
-  }
-
-  return {
-    projects: raw.projects as Project[],
-    sessions: raw.sessions as Session[],
-    meta: {
-      activeSession: raw.meta?.activeSession ?? null,
-    },
-  };
-}
+import {
+  MAX_BACKUP_FILE_BYTES,
+  validateBackupData,
+} from "../lib/validation";
 
 export default function SettingsPage() {
   const {
@@ -58,17 +39,22 @@ export default function SettingsPage() {
     }
 
     try {
-      const text = await file.text();
-      const parsed = parseImportedData(text);
-      if (!parsed) {
-        throw new Error("Invalid backup format.");
+      if (file.size > MAX_BACKUP_FILE_BYTES) {
+        throw new Error(
+          `Backup file is too large. Max size is ${(MAX_BACKUP_FILE_BYTES / (1024 * 1024)).toFixed(
+            1
+          )} MB.`
+        );
       }
+      const text = await file.text();
+      const parsed = validateBackupData(JSON.parse(text));
       await importFullData(parsed.projects, parsed.sessions, parsed.meta);
       setError("");
       setStatus("Backup imported.");
-    } catch {
+    } catch (err) {
       setStatus("");
-      setError("Import failed. Use a valid JSON backup exported from this app.");
+      const message = err instanceof Error ? err.message : "Unknown import error.";
+      setError(`Import failed: ${message}`);
     } finally {
       event.target.value = "";
     }

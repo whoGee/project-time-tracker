@@ -7,8 +7,10 @@ import {
 } from "react";
 import {
   clearAllData as clearAllDbData,
+  countSessionsByProjectId,
   deleteSession,
   deleteSessionsByDateKey,
+  deleteSessionsByProjectId,
   deleteProject,
   exportAllData,
   getMetaState,
@@ -19,9 +21,19 @@ import {
   putSession,
   setActiveSession as persistActiveSession,
 } from "../lib/db";
-import { TrackerContext, type TrackerContextValue } from "./trackerContextShared";
 import { toDateKey } from "../lib/time";
-import type { ActiveSession, MetaState, Project, Session } from "../types";
+import { TrackerContext, type TrackerContextValue } from "./trackerContextShared";
+import {
+  buildClosedSessionFromActive,
+  ProjectDeleteBlockedError,
+} from "./sessionLifecycle";
+import type {
+  ActiveSession,
+  MetaState,
+  Project,
+  Session,
+  SessionUpdateInput,
+} from "../types";
 
 const HEARTBEAT_EVERY_MS = 15_000;
 
@@ -41,16 +53,7 @@ export function TrackerProvider({ children }: { children: ReactNode }) {
 
   const closeActiveIfAny = useCallback(
     async (existing: ActiveSession, endTs: number) => {
-      const boundedEndTs = Math.max(endTs, existing.startTs);
-      const durationSec = Math.floor((boundedEndTs - existing.startTs) / 1000);
-      const session: Session = {
-        id: existing.sessionId,
-        projectId: existing.projectId,
-        startTs: existing.startTs,
-        endTs: boundedEndTs,
-        durationSec,
-        dateKey: toDateKey(existing.startTs),
-      };
+      const session = buildClosedSessionFromActive(existing, endTs);
 
       await putSession(session);
       await persistActiveSession(null);
@@ -139,7 +142,48 @@ export function TrackerProvider({ children }: { children: ReactNode }) {
       if (activeSession?.projectId === projectId) {
         await closeActiveIfAny(activeSession, Date.now());
       }
+      const sessionCount = await countSessionsByProjectId(projectId);
+      if (sessionCount > 0) {
+        throw new ProjectDeleteBlockedError(projectId);
+      }
       await deleteProject(projectId);
+      setProjects((prev) => prev.filter((project) => project.id !== projectId));
+    },
+    [activeSession, closeActiveIfAny]
+  );
+
+  const hideProjectFromTracker = useCallback(
+    async (projectId: string) => {
+      if (activeSession?.projectId === projectId) {
+        await closeActiveIfAny(activeSession, Date.now());
+      }
+
+      const existing = projects.find((project) => project.id === projectId);
+      if (!existing) {
+        return;
+      }
+
+      const updated: Project = { ...existing, hiddenFromTracker: true };
+      await putProject(updated);
+      setProjects((prev) =>
+        prev
+          .map((project) => (project.id === projectId ? updated : project))
+          .sort((a, b) => a.createdAt - b.createdAt)
+      );
+    },
+    [activeSession, closeActiveIfAny, projects]
+  );
+
+  const deleteProjectWithSavedData = useCallback(
+    async (projectId: string) => {
+      if (activeSession?.projectId === projectId) {
+        await closeActiveIfAny(activeSession, Date.now());
+      }
+
+      await deleteSessionsByProjectId(projectId);
+      await deleteProject(projectId);
+
+      setSessions((prev) => prev.filter((session) => session.projectId !== projectId));
       setProjects((prev) => prev.filter((project) => project.id !== projectId));
     },
     [activeSession, closeActiveIfAny]
@@ -176,17 +220,40 @@ export function TrackerProvider({ children }: { children: ReactNode }) {
     await closeActiveIfAny(activeSession, Date.now());
   }, [activeSession, closeActiveIfAny]);
 
-  const updateSessionProject = useCallback(
-    async (sessionId: string, projectId: string) => {
+  const updateSessionRecord = useCallback(
+    async (sessionId: string, updates: SessionUpdateInput) => {
       const existing = sessions.find((session) => session.id === sessionId);
       if (!existing) {
         return;
       }
-      const updated: Session = { ...existing, projectId };
+
+      const nextProjectId = updates.projectId ?? existing.projectId;
+      if (!projects.some((project) => project.id === nextProjectId)) {
+        throw new Error("Session must reference an existing project.");
+      }
+
+      const nextStartTs = updates.startTs ?? existing.startTs;
+      const nextEndTs = updates.endTs ?? existing.endTs;
+      if (nextEndTs < nextStartTs) {
+        throw new Error("End time must be on or after start time.");
+      }
+
+      const updated: Session = {
+        ...existing,
+        projectId: nextProjectId,
+        startTs: nextStartTs,
+        endTs: nextEndTs,
+        durationSec: Math.floor((nextEndTs - nextStartTs) / 1000),
+        dateKey: toDateKey(nextStartTs),
+      };
       await putSession(updated);
-      setSessions((prev) => prev.map((session) => (session.id === sessionId ? updated : session)));
+      setSessions((prev) =>
+        prev
+          .map((session) => (session.id === sessionId ? updated : session))
+          .sort((a, b) => b.startTs - a.startTs)
+      );
     },
-    [sessions]
+    [projects, sessions]
   );
 
   const deleteSessionRecord = useCallback(async (sessionId: string) => {
@@ -237,9 +304,11 @@ export function TrackerProvider({ children }: { children: ReactNode }) {
     activeProject,
     addProject,
     removeProject,
+    hideProjectFromTracker,
+    deleteProjectWithSavedData,
     switchProject,
     stopTracking,
-    updateSessionProject,
+    updateSessionRecord,
     deleteSessionRecord,
     deleteSessionsForDate,
     exportFullData: exportAllData,

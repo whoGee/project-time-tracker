@@ -2,6 +2,7 @@ export interface Project {
   id: string;
   name: string;
   createdAt: number;
+  hiddenFromTracker?: boolean;
 }
 
 export interface Session {
@@ -22,6 +23,18 @@ export interface ActiveSession {
 
 export interface MetaState {
   activeSession: ActiveSession | null;
+}
+
+export interface BackupData {
+  projects: Project[];
+  sessions: Session[];
+  meta: MetaState;
+}
+
+export interface SessionUpdateInput {
+  projectId?: string;
+  startTs?: number;
+  endTs?: number;
 }
 
 export interface SummaryRow {

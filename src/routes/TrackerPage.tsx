@@ -1,6 +1,6 @@
 import { type FormEvent, useMemo, useState } from "react";
 import { useTracker } from "../context/useTracker";
-import { formatHhMmSs, todayDateKey } from "../lib/time";
+import { formatHhMmSs } from "../lib/time";
 
 export default function TrackerPage() {
   const {
@@ -11,6 +11,8 @@ export default function TrackerPage() {
     activeElapsedSec,
     addProject,
     removeProject,
+    hideProjectFromTracker,
+    deleteProjectWithSavedData,
     switchProject,
     stopTracking,
   } = useTracker();
@@ -18,10 +20,37 @@ export default function TrackerPage() {
   const [newProjectId, setNewProjectId] = useState("");
   const [newProjectName, setNewProjectName] = useState("");
   const [error, setError] = useState("");
+  const [deletePromptProjectId, setDeletePromptProjectId] = useState<string | null>(null);
+  const [dragOrderProjectIds, setDragOrderProjectIds] = useState<string[]>([]);
+  const [draggingProjectId, setDraggingProjectId] = useState<string | null>(null);
 
-  const todaySessions = useMemo(
-    () => sessions.filter((session) => session.dateKey === todayDateKey()),
-    [sessions]
+  const alphabeticalProjects = useMemo(
+    () =>
+      [...projects]
+        .filter((project) => !project.hiddenFromTracker)
+        .sort((a, b) =>
+        a.id.localeCompare(b.id, undefined, { sensitivity: "base", numeric: true })
+      ),
+    [projects]
+  );
+
+  const alphabeticalIds = useMemo(
+    () => alphabeticalProjects.map((project) => project.id),
+    [alphabeticalProjects]
+  );
+
+  const orderedProjectIds = useMemo(() => {
+    const stillExisting = dragOrderProjectIds.filter((id) => alphabeticalIds.includes(id));
+    const added = alphabeticalIds.filter((id) => !stillExisting.includes(id));
+    return [...stillExisting, ...added];
+  }, [alphabeticalIds, dragOrderProjectIds]);
+
+  const orderedProjects = useMemo(
+    () =>
+      orderedProjectIds
+        .map((id) => alphabeticalProjects.find((project) => project.id === id))
+        .filter((project): project is (typeof projects)[number] => Boolean(project)),
+    [alphabeticalProjects, orderedProjectIds]
   );
 
   async function handleAddProject(event: FormEvent<HTMLFormElement>) {
@@ -47,34 +76,104 @@ export default function TrackerPage() {
   }
 
   async function handleRemoveProject(projectId: string) {
+    const hasSessions = sessions.some((session) => session.projectId === projectId);
+    if (hasSessions) {
+      setDeletePromptProjectId(projectId);
+      return;
+    }
     const ok = window.confirm(`Remove project "${projectId}"?`);
     if (!ok) {
       return;
     }
-    await removeProject(projectId);
+    try {
+      await removeProject(projectId);
+      setError("");
+    } catch {
+      setDeletePromptProjectId(projectId);
+    }
+  }
+
+  async function handleDeleteTileOnly() {
+    if (!deletePromptProjectId) {
+      return;
+    }
+    try {
+      await hideProjectFromTracker(deletePromptProjectId);
+      setDeletePromptProjectId(null);
+      setError("");
+    } catch {
+      setError("Failed to delete project tile.");
+    }
+  }
+
+  async function handleDeleteTileAndData() {
+    if (!deletePromptProjectId) {
+      return;
+    }
+    const ok = window.confirm(
+      `Delete project "${deletePromptProjectId}" and all saved sessions for this project?`
+    );
+    if (!ok) {
+      return;
+    }
+    try {
+      await deleteProjectWithSavedData(deletePromptProjectId);
+      setDeletePromptProjectId(null);
+      setError("");
+    } catch {
+      setError("Failed to delete project and saved data.");
+    }
+  }
+
+  async function handleProjectTileTap(projectId: string) {
+    setError("");
+    if (activeProject?.id === projectId) {
+      await stopTracking();
+      return;
+    }
+    await switchProject(projectId);
+  }
+
+  function moveProjectTile(fromId: string, toId: string) {
+    if (fromId === toId) {
+      return;
+    }
+    setDragOrderProjectIds((prev) => {
+      const next = prev.length === 0 ? [...orderedProjectIds] : [...prev];
+      const fromIndex = next.indexOf(fromId);
+      const toIndex = next.indexOf(toId);
+      if (fromIndex < 0 || toIndex < 0) {
+        return prev;
+      }
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
   }
 
   return (
-    <section>
-      <h1>Tracker</h1>
+    <section className="tracker-layout">
+      <div className="tracker-top">
+        <h1>Tracker</h1>
 
-      <div className={`card tracking-banner ${activeProject ? "active" : "inactive"}`}>
-        {activeProject ? (
-          <>
-            <div className="tracking-project">
-              {activeProject.id} - {activeProject.name}
-            </div>
-            <div className="timer">{formatHhMmSs(activeElapsedSec)}</div>
-            <button className="secondary-btn compact-btn no-print" onClick={() => void stopTracking()}>
-              Stop
-            </button>
-          </>
-        ) : (
-          <div className="muted">No active project.</div>
-        )}
+        <div className={`card tracking-banner ${activeProject ? "active" : "inactive"}`}>
+          {activeProject ? (
+            <>
+              <div className="tracking-project">
+                {activeProject.id} - {activeProject.name}
+              </div>
+              <div className="timer">{formatHhMmSs(activeElapsedSec)}</div>
+              <button className="secondary-btn compact-btn no-print" onClick={() => void stopTracking()}>
+                Stop
+              </button>
+            </>
+          ) : (
+            <div className="muted">No active project.</div>
+          )}
+        </div>
       </div>
 
-      <div className="card no-print">
+      <div className="card no-print tracker-middle">
         <div className="section-title-row">
           <h2 className="compact-heading">Projects</h2>
           <button
@@ -129,33 +228,48 @@ export default function TrackerPage() {
         ) : null}
       </div>
 
-      <div className="project-grid">
+      <div className="project-grid tracker-bottom">
         {!ready ? (
-          <div className="card muted">Loading projects...</div>
-        ) : projects.length === 0 ? (
-          <div className="card empty">No projects yet. Use + to add your first project.</div>
+          <div className="card muted project-grid-placeholder">Loading projects...</div>
+        ) : orderedProjects.length === 0 ? (
+          <div className="card empty project-grid-placeholder">
+            No projects yet. Use + to add your first project.
+          </div>
         ) : (
-          projects.map((project) => {
+          orderedProjects.map((project) => {
             const isActive = project.id === activeProject?.id;
             return (
               <div
                 key={project.id}
-                className={`project-tile ${isActive ? "active" : "inactive"}`}
+                className={`project-tile ${isActive ? "active" : "inactive"} ${
+                  draggingProjectId === project.id ? "dragging" : ""
+                }`}
                 role="button"
                 tabIndex={0}
-                onClick={() => void switchProject(project.id)}
+                draggable
+                onClick={() => void handleProjectTileTap(project.id)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
-                    void switchProject(project.id);
+                    void handleProjectTileTap(project.id);
                   }
+                }}
+                onDragStart={() => setDraggingProjectId(project.id)}
+                onDragEnd={() => setDraggingProjectId(null)}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={() => {
+                  if (!draggingProjectId) {
+                    return;
+                  }
+                  moveProjectTile(draggingProjectId, project.id);
+                  setDraggingProjectId(null);
                 }}
               >
                 <div className="tile-inline">
                   {project.id} - {project.name}
                 </div>
                 <div className="tile-actions">
-                  <span className="tile-status">{isActive ? "Active" : "Switch to start"}</span>
+                  <span className="tile-status">tap to start/stop</span>
                   <button
                     className="mini-btn"
                     type="button"
@@ -173,7 +287,36 @@ export default function TrackerPage() {
         )}
       </div>
 
-      <div className="card muted">Today sessions: {todaySessions.length}</div>
+      {deletePromptProjectId ? (
+        <div className="modal-backdrop no-print" role="dialog" aria-modal="true">
+          <div className="modal-card">
+            <div className="modal-title">
+              Time has already been reported on this project. Choose the following:
+            </div>
+            <div className="delete-choice-grid">
+              <button className="delete-choice-box" type="button" onClick={() => void handleDeleteTileOnly()}>
+                Delete project tile from list only
+              </button>
+              <button
+                className="delete-choice-box danger-choice-box"
+                type="button"
+                onClick={() => void handleDeleteTileAndData()}
+              >
+                Delete project tile and saved data
+              </button>
+            </div>
+            <div className="inline-fields">
+              <button
+                className="secondary-btn compact-btn"
+                type="button"
+                onClick={() => setDeletePromptProjectId(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

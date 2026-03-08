@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { useTracker } from "../context/useTracker";
-import { downloadBlob, downloadText, fullDataToJson, summaryRowsToXlsx } from "../lib/export";
+import { downloadBlob, downloadText, fullDataToJson, intervalDataToXlsx } from "../lib/export";
 import { buildSummaryRows, totalHours } from "../lib/reporting";
-import { todayDateKey } from "../lib/time";
+import { dateKeyDaysAgo, monthStartDateKey, todayDateKey } from "../lib/time";
 
 export default function IntervalReportPage() {
   const { projects, sessions, exportFullData } = useTracker();
@@ -27,6 +27,14 @@ export default function IntervalReportPage() {
   const total = useMemo(() => totalHours(rows), [rows]);
   const scopeLabel = `${appliedStartDate} to ${appliedEndDate}`;
 
+  function applyPreset(nextStartDate: string, nextEndDate: string) {
+    setError("");
+    setStartDate(nextStartDate);
+    setEndDate(nextEndDate);
+    setAppliedStartDate(nextStartDate);
+    setAppliedEndDate(nextEndDate);
+  }
+
   function runReport() {
     if (!startDate || !endDate) {
       setError("Select both start and end dates.");
@@ -42,8 +50,13 @@ export default function IntervalReportPage() {
     setAppliedEndDate(endDate);
   }
 
-  function exportXlsx() {
-    const workbook = summaryRowsToXlsx(rows, `Interval report ${scopeLabel}`);
+  async function exportXlsx() {
+    const workbook = await intervalDataToXlsx(
+      projects,
+      sessions,
+      appliedStartDate,
+      appliedEndDate
+    );
     downloadBlob(`interval-report-${appliedStartDate}-to-${appliedEndDate}.xlsx`, workbook);
   }
 
@@ -58,8 +71,8 @@ export default function IntervalReportPage() {
       <h1>Interval Report</h1>
 
       <div className="card no-print">
-        <div className="inline-fields">
-          <div>
+        <div className="interval-controls">
+          <div className="interval-field">
             <label htmlFor="interval-start">Start date</label>
             <input
               id="interval-start"
@@ -68,7 +81,7 @@ export default function IntervalReportPage() {
               onChange={(event) => setStartDate(event.target.value)}
             />
           </div>
-          <div>
+          <div className="interval-field">
             <label htmlFor="interval-end">End date</label>
             <input
               id="interval-end"
@@ -77,16 +90,36 @@ export default function IntervalReportPage() {
               onChange={(event) => setEndDate(event.target.value)}
             />
           </div>
-          <button className="secondary-btn compact-btn" onClick={runReport}>
-            Run report
+          <button className="secondary-btn interval-run-btn" onClick={runReport}>
+            Fetch report
           </button>
+          <div className="interval-presets">
+            <button
+              className="secondary-btn compact-btn"
+              onClick={() => applyPreset(todayDateKey(), todayDateKey())}
+            >
+              Today
+            </button>
+            <button
+              className="secondary-btn compact-btn"
+              onClick={() => applyPreset(dateKeyDaysAgo(6), todayDateKey())}
+            >
+              Last 7 days
+            </button>
+            <button
+              className="secondary-btn compact-btn"
+              onClick={() => applyPreset(monthStartDateKey(), todayDateKey())}
+            >
+              This month
+            </button>
+          </div>
         </div>
         {error ? <div className="error-text">{error}</div> : null}
       </div>
 
       <div className="card print-area">
         <div className="toolbar no-print">
-          <button className="secondary-btn compact-btn" onClick={exportXlsx} disabled={rows.length === 0}>
+          <button className="secondary-btn compact-btn" onClick={() => void exportXlsx()}>
             Export XLSX
           </button>
           <button className="secondary-btn compact-btn" onClick={() => void exportJson()}>

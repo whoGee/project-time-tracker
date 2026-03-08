@@ -1,5 +1,6 @@
 import { openDB, type DBSchema } from "idb";
 import type { ActiveSession, MetaState, Project, Session } from "../types";
+import { validateBackupData } from "./validation";
 
 const DB_NAME = "project-time-tracker-db";
 const DB_VERSION = 1;
@@ -61,6 +62,11 @@ export async function deleteProject(projectId: string): Promise<void> {
   await db.delete("projects", projectId);
 }
 
+export async function countSessionsByProjectId(projectId: string): Promise<number> {
+  const db = await dbPromise;
+  return db.countFromIndex("sessions", "byProjectId", projectId);
+}
+
 export async function listSessions(): Promise<Session[]> {
   const db = await dbPromise;
   const sessions = await db.getAll("sessions");
@@ -93,6 +99,18 @@ export async function deleteSessionsByDateKey(dateKey: string): Promise<void> {
   const tx = db.transaction("sessions", "readwrite");
   const index = tx.store.index("byDateKey");
   let cursor = await index.openCursor(IDBKeyRange.only(dateKey));
+  while (cursor) {
+    await cursor.delete();
+    cursor = await cursor.continue();
+  }
+  await tx.done;
+}
+
+export async function deleteSessionsByProjectId(projectId: string): Promise<void> {
+  const db = await dbPromise;
+  const tx = db.transaction("sessions", "readwrite");
+  const index = tx.store.index("byProjectId");
+  let cursor = await index.openCursor(IDBKeyRange.only(projectId));
   while (cursor) {
     await cursor.delete();
     cursor = await cursor.continue();
@@ -143,6 +161,7 @@ export async function importAllData(
   sessions: Session[],
   meta: MetaState
 ): Promise<void> {
+  const validated = validateBackupData({ projects, sessions, meta });
   const db = await dbPromise;
   const tx = db.transaction(["projects", "sessions", "meta"], "readwrite");
 
@@ -152,14 +171,14 @@ export async function importAllData(
     tx.objectStore("meta").clear(),
   ]);
 
-  for (const project of projects) {
+  for (const project of validated.projects) {
     await tx.objectStore("projects").put(project);
   }
 
-  for (const session of sessions) {
+  for (const session of validated.sessions) {
     await tx.objectStore("sessions").put(session);
   }
 
-  await tx.objectStore("meta").put(meta.activeSession ?? null, "activeSession");
+  await tx.objectStore("meta").put(validated.meta.activeSession ?? null, "activeSession");
   await tx.done;
 }
