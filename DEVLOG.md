@@ -174,3 +174,22 @@ Purpose: track all updates before each commit and deployment.
 
 ### Notes
 - Source branch push follows deployment in this release step.
+
+## 2026-03-09 22:59 (local) - release prep
+
+### Summary
+- Added contribution workflow documentation and surfaced app semantic version in the UI.
+
+### Changes
+- `CONTRIBUTING.md`: added branching, PR, release, and deploy workflow.
+- `README.md`: linked to contribution and release workflow documentation.
+- `vite.config.ts`: injected app version from `package.json` at build time.
+- `src/globals.d.ts`: declared global build-time app version constant.
+- `src/App.tsx`: rendered bottom-right version badge.
+- `src/index.css`: styled fixed version badge to match tile text sizing.
+
+### Verification
+- `npm run build`: pass
+
+### Notes
+- Version badge renders `v<package.json version>`.

@@ -118,6 +118,21 @@ button {
   margin: 0 auto 24px;
 }
 
+.app-version-badge {
+  position: fixed;
+  right: 10px;
+  bottom: 8px;
+  font-size: 0.8rem;
+  line-height: 1.15;
+  color: #6b7280;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 3px 7px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
 .tracker-layout {
   display: grid;
   grid-template-rows: auto auto 1fr;
@@ -443,6 +458,11 @@ button {
 
   .compact-btn {
     font-size: 0.83rem;
+  }
+
+  .app-version-badge {
+    right: 14px;
+    bottom: 12px;
   }
 }
 

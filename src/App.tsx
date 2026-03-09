@@ -45,6 +45,10 @@ export default function App() {
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </main>
+
+      <div className="app-version-badge no-print" aria-label={`Application version v${__APP_VERSION__}`}>
+        v{__APP_VERSION__}
+      </div>
     </div>
   );
 }

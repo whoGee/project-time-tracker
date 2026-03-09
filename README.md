@@ -56,4 +56,5 @@ npm run preview
 
 - Data is stored locally in browser IndexedDB (`project-time-tracker-db`).
 - No backend or cloud sync in MVP.
+- Git workflow and release process are documented in [CONTRIBUTING.md](/Users/jvprivat/project-time-tracker/CONTRIBUTING.md).
 - Update [DEVLOG.md](/Users/jvprivat/project-time-tracker/DEVLOG.md) before each commit and deployment.
