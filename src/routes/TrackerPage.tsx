@@ -20,37 +20,41 @@ export default function TrackerPage() {
   const [newProjectId, setNewProjectId] = useState("");
   const [newProjectName, setNewProjectName] = useState("");
   const [error, setError] = useState("");
-  const [deletePromptProjectId, setDeletePromptProjectId] = useState<string | null>(null);
-  const [dragOrderProjectIds, setDragOrderProjectIds] = useState<string[]>([]);
-  const [draggingProjectId, setDraggingProjectId] = useState<string | null>(null);
+  const [deletePromptProjectKey, setDeletePromptProjectKey] = useState<string | null>(null);
+  const [dragOrderProjectKeys, setDragOrderProjectKeys] = useState<string[]>([]);
+  const [draggingProjectKey, setDraggingProjectKey] = useState<string | null>(null);
 
   const alphabeticalProjects = useMemo(
     () =>
       [...projects]
         .filter((project) => !project.hiddenFromTracker)
-        .sort((a, b) =>
-        a.id.localeCompare(b.id, undefined, { sensitivity: "base", numeric: true })
-      ),
+        .sort((a, b) => {
+          const byId = a.id.localeCompare(b.id, undefined, { sensitivity: "base", numeric: true });
+          if (byId !== 0) {
+            return byId;
+          }
+          return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+        }),
     [projects]
   );
 
-  const alphabeticalIds = useMemo(
-    () => alphabeticalProjects.map((project) => project.id),
+  const alphabeticalKeys = useMemo(
+    () => alphabeticalProjects.map((project) => project.key),
     [alphabeticalProjects]
   );
 
-  const orderedProjectIds = useMemo(() => {
-    const stillExisting = dragOrderProjectIds.filter((id) => alphabeticalIds.includes(id));
-    const added = alphabeticalIds.filter((id) => !stillExisting.includes(id));
+  const orderedProjectKeys = useMemo(() => {
+    const stillExisting = dragOrderProjectKeys.filter((key) => alphabeticalKeys.includes(key));
+    const added = alphabeticalKeys.filter((key) => !stillExisting.includes(key));
     return [...stillExisting, ...added];
-  }, [alphabeticalIds, dragOrderProjectIds]);
+  }, [alphabeticalKeys, dragOrderProjectKeys]);
 
   const orderedProjects = useMemo(
     () =>
-      orderedProjectIds
-        .map((id) => alphabeticalProjects.find((project) => project.id === id))
+      orderedProjectKeys
+        .map((key) => alphabeticalProjects.find((project) => project.key === key))
         .filter((project): project is (typeof projects)[number] => Boolean(project)),
-    [alphabeticalProjects, orderedProjectIds]
+    [alphabeticalProjects, orderedProjectKeys]
   );
 
   async function handleAddProject(event: FormEvent<HTMLFormElement>) {
@@ -63,8 +67,8 @@ export default function TrackerPage() {
       setError("Project id and name are required.");
       return;
     }
-    if (projects.some((project) => project.id === id)) {
-      setError("Project id already exists.");
+    if (projects.some((project) => project.id === id && project.name === name)) {
+      setError("Project id and project name combination already exists.");
       return;
     }
 
@@ -75,31 +79,36 @@ export default function TrackerPage() {
     setShowAddProject(false);
   }
 
-  async function handleRemoveProject(projectId: string) {
-    const hasSessions = sessions.some((session) => session.projectId === projectId);
-    if (hasSessions) {
-      setDeletePromptProjectId(projectId);
+  async function handleRemoveProject(projectKey: string) {
+    const project = projects.find((entry) => entry.key === projectKey);
+    if (!project) {
       return;
     }
-    const ok = window.confirm(`Remove project "${projectId}"?`);
+
+    const hasSessions = sessions.some((session) => session.projectKey === projectKey);
+    if (hasSessions) {
+      setDeletePromptProjectKey(projectKey);
+      return;
+    }
+    const ok = window.confirm(`Remove project "${project.id} - ${project.name}"?`);
     if (!ok) {
       return;
     }
     try {
-      await removeProject(projectId);
+      await removeProject(projectKey);
       setError("");
     } catch {
-      setDeletePromptProjectId(projectId);
+      setDeletePromptProjectKey(projectKey);
     }
   }
 
   async function handleDeleteTileOnly() {
-    if (!deletePromptProjectId) {
+    if (!deletePromptProjectKey) {
       return;
     }
     try {
-      await hideProjectFromTracker(deletePromptProjectId);
-      setDeletePromptProjectId(null);
+      await hideProjectFromTracker(deletePromptProjectKey);
+      setDeletePromptProjectKey(null);
       setError("");
     } catch {
       setError("Failed to delete project tile.");
@@ -107,41 +116,45 @@ export default function TrackerPage() {
   }
 
   async function handleDeleteTileAndData() {
-    if (!deletePromptProjectId) {
+    if (!deletePromptProjectKey) {
+      return;
+    }
+    const project = projects.find((entry) => entry.key === deletePromptProjectKey);
+    if (!project) {
       return;
     }
     const ok = window.confirm(
-      `Delete project "${deletePromptProjectId}" and all saved sessions for this project?`
+      `Delete project "${project.id} - ${project.name}" and all saved sessions for this project?`
     );
     if (!ok) {
       return;
     }
     try {
-      await deleteProjectWithSavedData(deletePromptProjectId);
-      setDeletePromptProjectId(null);
+      await deleteProjectWithSavedData(deletePromptProjectKey);
+      setDeletePromptProjectKey(null);
       setError("");
     } catch {
       setError("Failed to delete project and saved data.");
     }
   }
 
-  async function handleProjectTileTap(projectId: string) {
+  async function handleProjectTileTap(projectKey: string) {
     setError("");
-    if (activeProject?.id === projectId) {
+    if (activeProject?.key === projectKey) {
       await stopTracking();
       return;
     }
-    await switchProject(projectId);
+    await switchProject(projectKey);
   }
 
-  function moveProjectTile(fromId: string, toId: string) {
-    if (fromId === toId) {
+  function moveProjectTile(fromKey: string, toKey: string) {
+    if (fromKey === toKey) {
       return;
     }
-    setDragOrderProjectIds((prev) => {
-      const next = prev.length === 0 ? [...orderedProjectIds] : [...prev];
-      const fromIndex = next.indexOf(fromId);
-      const toIndex = next.indexOf(toId);
+    setDragOrderProjectKeys((prev) => {
+      const next = prev.length === 0 ? [...orderedProjectKeys] : [...prev];
+      const fromIndex = next.indexOf(fromKey);
+      const toIndex = next.indexOf(toKey);
       if (fromIndex < 0 || toIndex < 0) {
         return prev;
       }
@@ -237,32 +250,32 @@ export default function TrackerPage() {
           </div>
         ) : (
           orderedProjects.map((project) => {
-            const isActive = project.id === activeProject?.id;
+            const isActive = project.key === activeProject?.key;
             return (
               <div
-                key={project.id}
+                key={project.key}
                 className={`project-tile ${isActive ? "active" : "inactive"} ${
-                  draggingProjectId === project.id ? "dragging" : ""
+                  draggingProjectKey === project.key ? "dragging" : ""
                 }`}
                 role="button"
                 tabIndex={0}
                 draggable
-                onClick={() => void handleProjectTileTap(project.id)}
+                onClick={() => void handleProjectTileTap(project.key)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
-                    void handleProjectTileTap(project.id);
+                    void handleProjectTileTap(project.key);
                   }
                 }}
-                onDragStart={() => setDraggingProjectId(project.id)}
-                onDragEnd={() => setDraggingProjectId(null)}
+                onDragStart={() => setDraggingProjectKey(project.key)}
+                onDragEnd={() => setDraggingProjectKey(null)}
                 onDragOver={(event) => event.preventDefault()}
                 onDrop={() => {
-                  if (!draggingProjectId) {
+                  if (!draggingProjectKey) {
                     return;
                   }
-                  moveProjectTile(draggingProjectId, project.id);
-                  setDraggingProjectId(null);
+                  moveProjectTile(draggingProjectKey, project.key);
+                  setDraggingProjectKey(null);
                 }}
               >
                 <div className="tile-inline">
@@ -275,7 +288,7 @@ export default function TrackerPage() {
                     type="button"
                     onClick={(event) => {
                       event.stopPropagation();
-                      void handleRemoveProject(project.id);
+                      void handleRemoveProject(project.key);
                     }}
                   >
                     Remove
@@ -287,7 +300,7 @@ export default function TrackerPage() {
         )}
       </div>
 
-      {deletePromptProjectId ? (
+      {deletePromptProjectKey ? (
         <div className="modal-backdrop no-print" role="dialog" aria-modal="true">
           <div className="modal-card">
             <div className="modal-title">
@@ -309,7 +322,7 @@ export default function TrackerPage() {
               <button
                 className="secondary-btn compact-btn"
                 type="button"
-                onClick={() => setDeletePromptProjectId(null)}
+                onClick={() => setDeletePromptProjectKey(null)}
               >
                 Cancel
               </button>

@@ -193,3 +193,38 @@ Purpose: track all updates before each commit and deployment.
 
 ### Notes
 - Version badge renders `v<package.json version>`.
+
+## 2026-03-18 20:34 (local) - commit
+
+### Summary
+- Prepared `v0.2.0` with duplicate-project support, short internal project keys, export key toggle, and Daily/Tracker UI refinements.
+
+### Changes
+- `package.json`, `package-lock.json`: bumped app version to `0.2.0`.
+- `src/types.ts`, `src/context/TrackerContext.tsx`, `src/context/trackerContextShared.ts`, `src/context/sessionLifecycle.ts`: moved project/session identity to internal project keys and persisted export-key settings in app meta.
+- `src/lib/db.ts`, `src/lib/validation.ts`, `src/lib/reporting.ts`, `src/lib/export.ts`, `src/lib/projectIdentity.ts`: added project-key migration/normalization, duplicate `Project ID + Project Name` validation, report grouping by internal key, short-key generation, and optional `Project Key` export columns.
+- `src/routes/TrackerPage.tsx`, `src/routes/DailySummaryPage.tsx`, `src/routes/IntervalReportPage.tsx`, `src/routes/SettingsPage.tsx`, `src/index.css`: updated project creation rules, combined project labels, Daily sessions display, export setting UI, and fixed tracker banner sizing.
+- `tests/reporting.test.ts`, `tests/tracker-context.test.ts`, `tests/export.test.ts`, `tests/validation.test.ts`, `tests/project-identity.test.ts`: added regression coverage for duplicate visible IDs, export column toggling, backup compatibility, and key-migration preservation of visible totals.
+
+### Verification
+- `npm test`: pass
+- `npm run lint`: pass
+- `npm run build`: pass
+
+### Notes
+- Build still emits the existing `exceljs` chunk-size warning; release build completes successfully.
+
+## 2026-03-18 20:35 (local) - deploy
+
+### Summary
+- Deployed `v0.2.0` to GitHub Pages.
+
+### Changes
+- Deploy target: `gh-pages` branch from local `dist/` build.
+- Includes project identity migration, duplicate `Project ID + Project Name` support, export key toggle, shorter internal keys, and Daily/Tracker UI updates.
+
+### Verification
+- `npm run deploy`: pass (`Published`)
+
+### Notes
+- Source branch push and version tag follow deployment in this release step.

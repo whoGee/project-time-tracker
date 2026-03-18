@@ -10,10 +10,11 @@ function escapeCsvCell(value: string): string {
 }
 
 export function summaryRowsToCsv(rows: SummaryRow[], scopeLabel: string): string {
-  const header = "Project ID,Project Name,Minutes,Hours (1dp),Percent";
+  const header = "Project Key,Project ID,Project Name,Minutes,Hours (1dp),Percent";
   const body = rows
     .map((row) =>
       [
+        escapeCsvCell(row.projectKey),
         escapeCsvCell(row.projectId),
         escapeCsvCell(row.projectName),
         row.minutes.toFixed(1),
@@ -47,7 +48,8 @@ export async function intervalDataToXlsx(
   projects: Project[],
   sessions: Session[],
   startDateKey: string,
-  endDateKey: string
+  endDateKey: string,
+  includeProjectKey: boolean
 ): Promise<Blob> {
   const excelJs = await import("exceljs");
   const { Workbook } = excelJs;
@@ -59,8 +61,8 @@ export async function intervalDataToXlsx(
   const byProjectTotalSec = new Map<string, number>();
   const byProjectByDateSec = new Map<string, Map<string, number>>();
   for (const project of sortedProjects) {
-    byProjectTotalSec.set(project.id, 0);
-    byProjectByDateSec.set(project.id, new Map(dateKeys.map((dateKey) => [dateKey, 0])));
+    byProjectTotalSec.set(project.key, 0);
+    byProjectByDateSec.set(project.key, new Map(dateKeys.map((dateKey) => [dateKey, 0])));
   }
 
   for (const session of sessions) {
@@ -68,12 +70,12 @@ export async function intervalDataToXlsx(
       continue;
     }
     byProjectTotalSec.set(
-      session.projectId,
-      (byProjectTotalSec.get(session.projectId) ?? 0) + session.durationSec
+      session.projectKey,
+      (byProjectTotalSec.get(session.projectKey) ?? 0) + session.durationSec
     );
-    const byDate = byProjectByDateSec.get(session.projectId) ?? new Map<string, number>();
+    const byDate = byProjectByDateSec.get(session.projectKey) ?? new Map<string, number>();
     byDate.set(session.dateKey, (byDate.get(session.dateKey) ?? 0) + session.durationSec);
-    byProjectByDateSec.set(session.projectId, byDate);
+    byProjectByDateSec.set(session.projectKey, byDate);
   }
 
   const totalIntervalSec = Array.from(byProjectTotalSec.values()).reduce((acc, sec) => acc + sec, 0);
@@ -81,13 +83,21 @@ export async function intervalDataToXlsx(
   const summarySheet = workbook.addWorksheet("Summary");
   summarySheet.addRow(["Scope", scopeLabel]);
   summarySheet.addRow([]);
-  summarySheet.addRow(["Project ID", "Project Name", "Minutes", "Hours (1dp)", "Percent"]);
+  summarySheet.addRow([
+    ...(includeProjectKey ? ["Project Key"] : []),
+    "Project ID",
+    "Project Name",
+    "Minutes",
+    "Hours (1dp)",
+    "Percent",
+  ]);
   for (const project of sortedProjects) {
-    const durationSec = byProjectTotalSec.get(project.id) ?? 0;
+    const durationSec = byProjectTotalSec.get(project.key) ?? 0;
     const minutes = durationSec / 60;
     const hours = durationSec / 3600;
     const percent = totalIntervalSec === 0 ? 0 : (durationSec / totalIntervalSec) * 100;
     summarySheet.addRow([
+      ...(includeProjectKey ? [project.key] : []),
       project.id,
       project.name,
       Number(minutes.toFixed(1)),
@@ -97,15 +107,22 @@ export async function intervalDataToXlsx(
   }
 
   const dailySheet = workbook.addWorksheet("Daily breakdown");
-  dailySheet.addRow(["Project ID", "Project Name", ...dateKeys, "Percent"]);
+  dailySheet.addRow([
+    ...(includeProjectKey ? ["Project Key"] : []),
+    "Project ID",
+    "Project Name",
+    ...dateKeys,
+    "Percent",
+  ]);
   for (const project of sortedProjects) {
-    const durationSec = byProjectTotalSec.get(project.id) ?? 0;
+    const durationSec = byProjectTotalSec.get(project.key) ?? 0;
     const percent = totalIntervalSec === 0 ? 0 : (durationSec / totalIntervalSec) * 100;
     const perDayHours = dateKeys.map((dateKey) => {
-      const sec = byProjectByDateSec.get(project.id)?.get(dateKey) ?? 0;
+      const sec = byProjectByDateSec.get(project.key)?.get(dateKey) ?? 0;
       return Number((sec / 3600).toFixed(1));
     });
     dailySheet.addRow([
+      ...(includeProjectKey ? [project.key] : []),
       project.id,
       project.name,
       ...perDayHours,

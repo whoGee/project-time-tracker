@@ -15,20 +15,21 @@ export function buildSummaryRows(projects: Project[], sessions: Session[]): Summ
   const byProject = new Map<string, number>();
   for (const session of sessions) {
     byProject.set(
-      session.projectId,
-      (byProject.get(session.projectId) ?? 0) + session.durationSec
+      session.projectKey,
+      (byProject.get(session.projectKey) ?? 0) + session.durationSec
     );
   }
 
   const totalSec = Array.from(byProject.values()).reduce((acc, current) => acc + current, 0);
-  const projectById = new Map(projects.map((p) => [p.id, p]));
+  const projectByKey = new Map(projects.map((project) => [project.key, project]));
 
-  const rows: SummaryRow[] = Array.from(byProject.entries()).map(([projectId, durationSec]) => {
-    const project = projectById.get(projectId);
+  const rows: SummaryRow[] = Array.from(byProject.entries()).map(([projectKey, durationSec]) => {
+    const project = projectByKey.get(projectKey);
     const minutes = durationSec / 60;
     return {
-      projectId,
-      projectName: project ? project.name : projectId,
+      projectKey,
+      projectId: project ? project.id : projectKey,
+      projectName: project ? project.name : projectKey,
       durationSec,
       minutes,
       hours: Number((durationSec / 3600).toFixed(1)),
@@ -36,7 +37,17 @@ export function buildSummaryRows(projects: Project[], sessions: Session[]): Summ
     };
   });
 
-  rows.sort((a, b) => compareProjectIds(a.projectId, b.projectId));
+  rows.sort((a, b) => {
+    const byId = compareProjectIds(a.projectId, b.projectId);
+    if (byId !== 0) {
+      return byId;
+    }
+    const byName = a.projectName.localeCompare(b.projectName, undefined, { sensitivity: "base" });
+    if (byName !== 0) {
+      return byName;
+    }
+    return a.projectKey.localeCompare(b.projectKey, undefined, { sensitivity: "base" });
+  });
   return rows;
 }
 

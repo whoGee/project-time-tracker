@@ -14,6 +14,8 @@ export default function SettingsPage() {
     exportFullData,
     clearAllData,
     importFullData,
+    includeProjectKeyInExports,
+    setIncludeProjectKeyInExports,
   } = useTracker();
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
@@ -89,6 +91,15 @@ export default function SettingsPage() {
 
       <div className="card no-print">
         <h2 className="compact-heading">Backup</h2>
+        <label className="checkbox-row" htmlFor="include-project-key-in-exports">
+          <input
+            id="include-project-key-in-exports"
+            type="checkbox"
+            checked={includeProjectKeyInExports}
+            onChange={(event) => void setIncludeProjectKeyInExports(event.target.checked)}
+          />
+          <span>Include internal project key in tabular exports</span>
+        </label>
         <div className="toolbar">
           <button className="secondary-btn compact-btn" onClick={() => void exportBackup()}>
             Export JSON backup

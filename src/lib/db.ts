@@ -1,11 +1,18 @@
-import { openDB, type DBSchema } from "idb";
+import { openDB, type DBSchema, type IDBPDatabase, type IDBPTransaction } from "idb";
 import type { ActiveSession, MetaState, Project, Session } from "../types";
+import { normalizeProjectKeyData } from "./projectIdentity";
 import { validateBackupData } from "./validation";
 
 const DB_NAME = "project-time-tracker-db";
-const DB_VERSION = 1;
+const DB_VERSION = 3;
 
-type MetaKey = "activeSession";
+type MetaKey = "activeSession" | "includeProjectKeyInExports";
+
+type MetaValue = ActiveSession | boolean | null;
+
+type LegacyProject = Omit<Project, "key">;
+type LegacySession = Omit<Session, "projectKey"> & { projectId: string };
+type LegacyActiveSession = Omit<ActiveSession, "projectKey"> & { projectId: string };
 
 interface TrackerDbSchema extends DBSchema {
   projects: {
@@ -17,31 +24,166 @@ interface TrackerDbSchema extends DBSchema {
     value: Session;
     indexes: {
       byDateKey: string;
-      byProjectId: string;
+      byProjectKey: string;
       byStartTs: number;
     };
   };
   meta: {
     key: MetaKey;
-    value: ActiveSession | null;
+    value: MetaValue;
   };
 }
 
+function createProjectsStore(db: IDBPDatabase<TrackerDbSchema>) {
+  if (!db.objectStoreNames.contains("projects")) {
+    db.createObjectStore("projects", { keyPath: "key" });
+  }
+}
+
+function createSessionsStore(db: IDBPDatabase<TrackerDbSchema>) {
+  if (!db.objectStoreNames.contains("sessions")) {
+    const sessions = db.createObjectStore("sessions", { keyPath: "id" });
+    sessions.createIndex("byDateKey", "dateKey");
+    sessions.createIndex("byProjectKey", "projectKey");
+    sessions.createIndex("byStartTs", "startTs");
+  }
+}
+
+function createMetaStore(db: IDBPDatabase<TrackerDbSchema>) {
+  if (!db.objectStoreNames.contains("meta")) {
+    db.createObjectStore("meta");
+  }
+}
+
+async function migrateLegacyData(
+  db: IDBPDatabase<TrackerDbSchema>,
+  transaction: IDBPTransaction<TrackerDbSchema, ("projects" | "sessions" | "meta")[], "versionchange">
+) {
+  const legacyProjectStore = transaction.objectStore("projects");
+  const legacySessionStore = transaction.objectStore("sessions");
+  const legacyMetaStore = transaction.objectStore("meta");
+
+  const [legacyProjects, legacySessions, legacyActiveSession, includeProjectKeyInExports] =
+    await Promise.all([
+      legacyProjectStore.getAll() as unknown as Promise<LegacyProject[]>,
+      legacySessionStore.getAll() as unknown as Promise<LegacySession[]>,
+      legacyMetaStore.get("activeSession") as unknown as Promise<LegacyActiveSession | null | undefined>,
+      legacyMetaStore.get("includeProjectKeyInExports") as unknown as Promise<boolean | undefined>,
+    ]);
+
+  db.deleteObjectStore("projects");
+  db.deleteObjectStore("sessions");
+
+  createProjectsStore(db);
+  createSessionsStore(db);
+
+  const projectStore = transaction.objectStore("projects");
+  const sessionStore = transaction.objectStore("sessions");
+
+  const migrated = normalizeProjectKeyData(
+    legacyProjects.map((legacyProject) => ({
+      key: legacyProject.id,
+      id: legacyProject.id,
+      name: legacyProject.name,
+      createdAt: legacyProject.createdAt,
+      hiddenFromTracker: legacyProject.hiddenFromTracker,
+    })),
+    legacySessions.map((legacySession) => ({
+      id: legacySession.id,
+      projectKey: legacySession.projectId,
+      startTs: legacySession.startTs,
+      endTs: legacySession.endTs,
+      durationSec: legacySession.durationSec,
+      dateKey: legacySession.dateKey,
+    })),
+    {
+      activeSession: legacyActiveSession
+        ? {
+            sessionId: legacyActiveSession.sessionId,
+            projectKey: legacyActiveSession.projectId,
+            startTs: legacyActiveSession.startTs,
+            heartbeatTs: legacyActiveSession.heartbeatTs,
+          }
+        : null,
+      includeProjectKeyInExports: includeProjectKeyInExports ?? false,
+    }
+  );
+
+  for (const project of migrated.projects) {
+    await projectStore.put(project);
+  }
+
+  for (const session of migrated.sessions) {
+    await sessionStore.put(session);
+  }
+
+  await legacyMetaStore.put(migrated.meta.activeSession, "activeSession");
+  await legacyMetaStore.put(migrated.meta.includeProjectKeyInExports, "includeProjectKeyInExports");
+}
+
+async function migrateExistingKeysToShortFormat(
+  transaction: IDBPTransaction<TrackerDbSchema, ("projects" | "sessions" | "meta")[], "versionchange">
+) {
+  const projectStore = transaction.objectStore("projects");
+  const sessionStore = transaction.objectStore("sessions");
+  const metaStore = transaction.objectStore("meta");
+
+  const [projects, sessions, activeSession, includeProjectKeyInExports] = await Promise.all([
+    projectStore.getAll(),
+    sessionStore.getAll(),
+    metaStore.get("activeSession") as Promise<ActiveSession | null | undefined>,
+    metaStore.get("includeProjectKeyInExports") as Promise<boolean | undefined>,
+  ]);
+
+  const normalized = normalizeProjectKeyData(projects, sessions, {
+    activeSession: activeSession ?? null,
+    includeProjectKeyInExports: includeProjectKeyInExports ?? false,
+  });
+
+  await Promise.all([projectStore.clear(), sessionStore.clear()]);
+
+  for (const project of normalized.projects) {
+    await projectStore.put(project);
+  }
+
+  for (const session of normalized.sessions) {
+    await sessionStore.put(session);
+  }
+
+  await metaStore.put(normalized.meta.activeSession, "activeSession");
+  await metaStore.put(normalized.meta.includeProjectKeyInExports, "includeProjectKeyInExports");
+}
+
 const dbPromise = openDB<TrackerDbSchema>(DB_NAME, DB_VERSION, {
-  upgrade(db) {
-    if (!db.objectStoreNames.contains("projects")) {
-      db.createObjectStore("projects", { keyPath: "id" });
+  async upgrade(db, oldVersion, _newVersion, transaction) {
+    if (oldVersion === 0) {
+      createProjectsStore(db);
+      createSessionsStore(db);
+      createMetaStore(db);
+      return;
     }
 
-    if (!db.objectStoreNames.contains("sessions")) {
-      const sessions = db.createObjectStore("sessions", { keyPath: "id" });
-      sessions.createIndex("byDateKey", "dateKey");
-      sessions.createIndex("byProjectId", "projectId");
-      sessions.createIndex("byStartTs", "startTs");
+    if (oldVersion < 2) {
+      createMetaStore(db);
+      await migrateLegacyData(
+        db,
+        transaction as IDBPTransaction<
+          TrackerDbSchema,
+          ("projects" | "sessions" | "meta")[],
+          "versionchange"
+        >
+      );
+      return;
     }
 
-    if (!db.objectStoreNames.contains("meta")) {
-      db.createObjectStore("meta");
+    if (oldVersion < 3) {
+      await migrateExistingKeysToShortFormat(
+        transaction as IDBPTransaction<
+          TrackerDbSchema,
+          ("projects" | "sessions" | "meta")[],
+          "versionchange"
+        >
+      );
     }
   },
 });
@@ -57,14 +199,14 @@ export async function putProject(project: Project): Promise<void> {
   await db.put("projects", project);
 }
 
-export async function deleteProject(projectId: string): Promise<void> {
+export async function deleteProject(projectKey: string): Promise<void> {
   const db = await dbPromise;
-  await db.delete("projects", projectId);
+  await db.delete("projects", projectKey);
 }
 
-export async function countSessionsByProjectId(projectId: string): Promise<number> {
+export async function countSessionsByProjectKey(projectKey: string): Promise<number> {
   const db = await dbPromise;
-  return db.countFromIndex("sessions", "byProjectId", projectId);
+  return db.countFromIndex("sessions", "byProjectKey", projectKey);
 }
 
 export async function listSessions(): Promise<Session[]> {
@@ -106,11 +248,11 @@ export async function deleteSessionsByDateKey(dateKey: string): Promise<void> {
   await tx.done;
 }
 
-export async function deleteSessionsByProjectId(projectId: string): Promise<void> {
+export async function deleteSessionsByProjectKey(projectKey: string): Promise<void> {
   const db = await dbPromise;
   const tx = db.transaction("sessions", "readwrite");
-  const index = tx.store.index("byProjectId");
-  let cursor = await index.openCursor(IDBKeyRange.only(projectId));
+  const index = tx.store.index("byProjectKey");
+  let cursor = await index.openCursor(IDBKeyRange.only(projectKey));
   while (cursor) {
     await cursor.delete();
     cursor = await cursor.continue();
@@ -120,15 +262,24 @@ export async function deleteSessionsByProjectId(projectId: string): Promise<void
 
 export async function getMetaState(): Promise<MetaState> {
   const db = await dbPromise;
-  const activeSession = await db.get("meta", "activeSession");
+  const [activeSession, includeProjectKeyInExports] = await Promise.all([
+    db.get("meta", "activeSession") as Promise<ActiveSession | null | undefined>,
+    db.get("meta", "includeProjectKeyInExports") as Promise<boolean | undefined>,
+  ]);
   return {
     activeSession: activeSession ?? null,
+    includeProjectKeyInExports: includeProjectKeyInExports ?? false,
   };
 }
 
 export async function setActiveSession(activeSession: ActiveSession | null): Promise<void> {
   const db = await dbPromise;
   await db.put("meta", activeSession, "activeSession");
+}
+
+export async function setIncludeProjectKeyInExports(enabled: boolean): Promise<void> {
+  const db = await dbPromise;
+  await db.put("meta", enabled, "includeProjectKeyInExports");
 }
 
 export async function exportAllData(): Promise<{
@@ -162,6 +313,11 @@ export async function importAllData(
   meta: MetaState
 ): Promise<void> {
   const validated = validateBackupData({ projects, sessions, meta });
+  const normalized = normalizeProjectKeyData(
+    validated.projects,
+    validated.sessions,
+    validated.meta
+  );
   const db = await dbPromise;
   const tx = db.transaction(["projects", "sessions", "meta"], "readwrite");
 
@@ -171,14 +327,17 @@ export async function importAllData(
     tx.objectStore("meta").clear(),
   ]);
 
-  for (const project of validated.projects) {
+  for (const project of normalized.projects) {
     await tx.objectStore("projects").put(project);
   }
 
-  for (const session of validated.sessions) {
+  for (const session of normalized.sessions) {
     await tx.objectStore("sessions").put(session);
   }
 
-  await tx.objectStore("meta").put(validated.meta.activeSession ?? null, "activeSession");
+  await tx.objectStore("meta").put(normalized.meta.activeSession ?? null, "activeSession");
+  await tx
+    .objectStore("meta")
+    .put(normalized.meta.includeProjectKeyInExports, "includeProjectKeyInExports");
   await tx.done;
 }

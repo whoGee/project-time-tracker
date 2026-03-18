@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTracker } from "../context/useTracker";
+import { formatProjectLabel } from "../lib/projectIdentity";
 import { buildSummaryRows, totalHours } from "../lib/reporting";
 import {
   formatHhMmSs,
@@ -19,7 +20,7 @@ export default function DailySummaryPage() {
   } = useTracker();
   const [dateKey, setDateKey] = useState(todayDateKey());
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
-  const [editProjectId, setEditProjectId] = useState("");
+  const [editProjectKey, setEditProjectKey] = useState("");
   const [editStartValue, setEditStartValue] = useState("");
   const [editEndValue, setEditEndValue] = useState("");
   const [editError, setEditError] = useState("");
@@ -33,6 +34,11 @@ export default function DailySummaryPage() {
 
   const total = useMemo(() => totalHours(rows), [rows]);
 
+  const projectByKey = useMemo(
+    () => new Map(projects.map((project) => [project.key, project])),
+    [projects]
+  );
+
   async function eraseDay() {
     const ok = window.confirm(`Delete all session records for ${dateKey}?`);
     if (!ok) {
@@ -44,7 +50,7 @@ export default function DailySummaryPage() {
   function openEditSession(session: Session) {
     setEditError("");
     setEditingSessionId(session.id);
-    setEditProjectId(session.projectId);
+    setEditProjectKey(session.projectKey);
     setEditStartValue(toLocalDateTimeInputValue(session.startTs));
     setEditEndValue(toLocalDateTimeInputValue(session.endTs));
   }
@@ -62,7 +68,7 @@ export default function DailySummaryPage() {
 
     try {
       await updateSessionRecord(editingSessionId, {
-        projectId: editProjectId,
+        projectKey: editProjectKey,
         startTs,
         endTs,
       });
@@ -115,10 +121,8 @@ export default function DailySummaryPage() {
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.projectId}>
-                  <td>
-                    {row.projectId} - {row.projectName}
-                  </td>
+                <tr key={row.projectKey}>
+                  <td>{formatProjectLabel({ id: row.projectId, name: row.projectName })}</td>
                   <td>{row.hours.toFixed(1)}</td>
                   <td>{row.percent.toFixed(1)}%</td>
                 </tr>
@@ -145,28 +149,31 @@ export default function DailySummaryPage() {
               </tr>
             </thead>
             <tbody>
-              {daySessions.map((session) => (
-                <tr key={session.id}>
-                  <td>{session.projectId}</td>
-                  <td>{new Date(session.startTs).toLocaleTimeString()}</td>
-                  <td>{new Date(session.endTs).toLocaleTimeString()}</td>
-                  <td>{formatHhMmSs(session.durationSec)}</td>
-                  <td className="no-print">
-                    <div className="inline-fields">
-                      <button className="mini-btn" type="button" onClick={() => openEditSession(session)}>
-                        Edit
-                      </button>
-                      <button
-                        className="mini-btn"
-                        type="button"
-                        onClick={() => void removeSession(session.id)}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {daySessions.map((session) => {
+                const project = projectByKey.get(session.projectKey);
+                return (
+                  <tr key={session.id}>
+                    <td>{project ? formatProjectLabel(project) : session.projectKey}</td>
+                    <td>{new Date(session.startTs).toLocaleTimeString()}</td>
+                    <td>{new Date(session.endTs).toLocaleTimeString()}</td>
+                    <td>{formatHhMmSs(session.durationSec)}</td>
+                    <td className="no-print">
+                      <div className="inline-fields">
+                        <button className="mini-btn" type="button" onClick={() => openEditSession(session)}>
+                          Edit
+                        </button>
+                        <button
+                          className="mini-btn"
+                          type="button"
+                          onClick={() => void removeSession(session.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -181,12 +188,12 @@ export default function DailySummaryPage() {
                 <label htmlFor="daily-edit-session-project">Project</label>
                 <select
                   id="daily-edit-session-project"
-                  value={editProjectId}
-                  onChange={(event) => setEditProjectId(event.target.value)}
+                  value={editProjectKey}
+                  onChange={(event) => setEditProjectKey(event.target.value)}
                 >
                   {projects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.id} - {project.name}
+                    <option key={project.key} value={project.key}>
+                      {formatProjectLabel(project)}
                     </option>
                   ))}
                 </select>

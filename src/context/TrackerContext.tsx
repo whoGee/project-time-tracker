@@ -7,10 +7,10 @@ import {
 } from "react";
 import {
   clearAllData as clearAllDbData,
-  countSessionsByProjectId,
+  countSessionsByProjectKey,
   deleteSession,
   deleteSessionsByDateKey,
-  deleteSessionsByProjectId,
+  deleteSessionsByProjectKey,
   deleteProject,
   exportAllData,
   getMetaState,
@@ -20,7 +20,13 @@ import {
   putProject,
   putSession,
   setActiveSession as persistActiveSession,
+  setIncludeProjectKeyInExports as persistIncludeProjectKeyInExports,
 } from "../lib/db";
+import {
+  createShortProjectKey,
+  formatProjectLabel,
+  normalizeProjectKeyData,
+} from "../lib/projectIdentity";
 import { toDateKey } from "../lib/time";
 import { TrackerContext, type TrackerContextValue } from "./trackerContextShared";
 import {
@@ -49,6 +55,7 @@ export function TrackerProvider({ children }: { children: ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
+  const [includeProjectKeyInExports, setIncludeProjectKeyInExportsState] = useState(false);
   const [tickTs, setTickTs] = useState(() => Date.now());
 
   const closeActiveIfAny = useCallback(
@@ -79,6 +86,7 @@ export function TrackerProvider({ children }: { children: ReactNode }) {
 
       setProjects(projectList);
       setSessions(sessionList);
+      setIncludeProjectKeyInExportsState(meta.includeProjectKeyInExports);
 
       if (meta.activeSession) {
         await closeActiveIfAny(meta.activeSession, meta.activeSession.heartbeatTs);
@@ -128,6 +136,7 @@ export function TrackerProvider({ children }: { children: ReactNode }) {
     }
 
     const project: Project = {
+      key: createShortProjectKey(new Set(projects.map((project) => project.key))),
       id: normalizedId,
       name: normalizedName,
       createdAt: Date.now(),
@@ -135,30 +144,35 @@ export function TrackerProvider({ children }: { children: ReactNode }) {
 
     await putProject(project);
     setProjects((prev) => [...prev, project].sort((a, b) => a.createdAt - b.createdAt));
-  }, []);
+  }, [projects]);
 
   const removeProject = useCallback(
-    async (projectId: string) => {
-      if (activeSession?.projectId === projectId) {
+    async (projectKey: string) => {
+      const existing = projects.find((project) => project.key === projectKey);
+      if (!existing) {
+        return;
+      }
+
+      if (activeSession?.projectKey === projectKey) {
         await closeActiveIfAny(activeSession, Date.now());
       }
-      const sessionCount = await countSessionsByProjectId(projectId);
+      const sessionCount = await countSessionsByProjectKey(projectKey);
       if (sessionCount > 0) {
-        throw new ProjectDeleteBlockedError(projectId);
+        throw new ProjectDeleteBlockedError(formatProjectLabel(existing));
       }
-      await deleteProject(projectId);
-      setProjects((prev) => prev.filter((project) => project.id !== projectId));
+      await deleteProject(projectKey);
+      setProjects((prev) => prev.filter((project) => project.key !== projectKey));
     },
-    [activeSession, closeActiveIfAny]
+    [activeSession, closeActiveIfAny, projects]
   );
 
   const hideProjectFromTracker = useCallback(
-    async (projectId: string) => {
-      if (activeSession?.projectId === projectId) {
+    async (projectKey: string) => {
+      if (activeSession?.projectKey === projectKey) {
         await closeActiveIfAny(activeSession, Date.now());
       }
 
-      const existing = projects.find((project) => project.id === projectId);
+      const existing = projects.find((project) => project.key === projectKey);
       if (!existing) {
         return;
       }
@@ -167,7 +181,7 @@ export function TrackerProvider({ children }: { children: ReactNode }) {
       await putProject(updated);
       setProjects((prev) =>
         prev
-          .map((project) => (project.id === projectId ? updated : project))
+          .map((project) => (project.key === projectKey ? updated : project))
           .sort((a, b) => a.createdAt - b.createdAt)
       );
     },
@@ -175,24 +189,24 @@ export function TrackerProvider({ children }: { children: ReactNode }) {
   );
 
   const deleteProjectWithSavedData = useCallback(
-    async (projectId: string) => {
-      if (activeSession?.projectId === projectId) {
+    async (projectKey: string) => {
+      if (activeSession?.projectKey === projectKey) {
         await closeActiveIfAny(activeSession, Date.now());
       }
 
-      await deleteSessionsByProjectId(projectId);
-      await deleteProject(projectId);
+      await deleteSessionsByProjectKey(projectKey);
+      await deleteProject(projectKey);
 
-      setSessions((prev) => prev.filter((session) => session.projectId !== projectId));
-      setProjects((prev) => prev.filter((project) => project.id !== projectId));
+      setSessions((prev) => prev.filter((session) => session.projectKey !== projectKey));
+      setProjects((prev) => prev.filter((project) => project.key !== projectKey));
     },
     [activeSession, closeActiveIfAny]
   );
 
   const switchProject = useCallback(
-    async (projectId: string) => {
+    async (projectKey: string) => {
       const now = Date.now();
-      if (activeSession?.projectId === projectId) {
+      if (activeSession?.projectKey === projectKey) {
         return;
       }
 
@@ -202,7 +216,7 @@ export function TrackerProvider({ children }: { children: ReactNode }) {
 
       const nextActive: ActiveSession = {
         sessionId: uid(),
-        projectId,
+        projectKey,
         startTs: now,
         heartbeatTs: now,
       };
@@ -227,8 +241,8 @@ export function TrackerProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const nextProjectId = updates.projectId ?? existing.projectId;
-      if (!projects.some((project) => project.id === nextProjectId)) {
+      const nextProjectKey = updates.projectKey ?? existing.projectKey;
+      if (!projects.some((project) => project.key === nextProjectKey)) {
         throw new Error("Session must reference an existing project.");
       }
 
@@ -240,7 +254,7 @@ export function TrackerProvider({ children }: { children: ReactNode }) {
 
       const updated: Session = {
         ...existing,
-        projectId: nextProjectId,
+        projectKey: nextProjectKey,
         startTs: nextStartTs,
         endTs: nextEndTs,
         durationSec: Math.floor((nextEndTs - nextStartTs) / 1000),
@@ -271,17 +285,25 @@ export function TrackerProvider({ children }: { children: ReactNode }) {
     setProjects([]);
     setSessions([]);
     setActiveSession(null);
+    setIncludeProjectKeyInExportsState(false);
   }, []);
 
   const importFullData = useCallback(
     async (nextProjects: Project[], nextSessions: Session[], nextMeta: MetaState) => {
-      await importAllData(nextProjects, nextSessions, nextMeta);
-      setProjects([...nextProjects].sort((a, b) => a.createdAt - b.createdAt));
-      setSessions([...nextSessions].sort((a, b) => b.startTs - a.startTs));
-      setActiveSession(nextMeta.activeSession ?? null);
+      const normalized = normalizeProjectKeyData(nextProjects, nextSessions, nextMeta);
+      await importAllData(normalized.projects, normalized.sessions, normalized.meta);
+      setProjects([...normalized.projects].sort((a, b) => a.createdAt - b.createdAt));
+      setSessions([...normalized.sessions].sort((a, b) => b.startTs - a.startTs));
+      setActiveSession(normalized.meta.activeSession ?? null);
+      setIncludeProjectKeyInExportsState(normalized.meta.includeProjectKeyInExports);
     },
     []
   );
+
+  const setIncludeProjectKeyInExports = useCallback(async (enabled: boolean) => {
+    await persistIncludeProjectKeyInExports(enabled);
+    setIncludeProjectKeyInExportsState(enabled);
+  }, []);
 
   const activeElapsedSec = useMemo(() => {
     if (!activeSession) {
@@ -291,7 +313,7 @@ export function TrackerProvider({ children }: { children: ReactNode }) {
   }, [activeSession, tickTs]);
 
   const activeProject = useMemo(
-    () => projects.find((project) => project.id === activeSession?.projectId) ?? null,
+    () => projects.find((project) => project.key === activeSession?.projectKey) ?? null,
     [projects, activeSession]
   );
 
@@ -314,6 +336,8 @@ export function TrackerProvider({ children }: { children: ReactNode }) {
     exportFullData: exportAllData,
     clearAllData,
     importFullData,
+    includeProjectKeyInExports,
+    setIncludeProjectKeyInExports,
   };
 
   return <TrackerContext.Provider value={value}>{children}</TrackerContext.Provider>;

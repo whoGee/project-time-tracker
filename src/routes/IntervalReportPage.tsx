@@ -5,7 +5,7 @@ import { buildSummaryRows, totalHours } from "../lib/reporting";
 import { dateKeyDaysAgo, monthStartDateKey, todayDateKey } from "../lib/time";
 
 export default function IntervalReportPage() {
-  const { projects, sessions, exportFullData } = useTracker();
+  const { projects, sessions, exportFullData, includeProjectKeyInExports } = useTracker();
   const [startDate, setStartDate] = useState(todayDateKey());
   const [endDate, setEndDate] = useState(todayDateKey());
   const [appliedStartDate, setAppliedStartDate] = useState(todayDateKey());
@@ -55,7 +55,8 @@ export default function IntervalReportPage() {
       projects,
       sessions,
       appliedStartDate,
-      appliedEndDate
+      appliedEndDate,
+      includeProjectKeyInExports
     );
     downloadBlob(`interval-report-${appliedStartDate}-to-${appliedEndDate}.xlsx`, workbook);
   }
@@ -144,7 +145,7 @@ export default function IntervalReportPage() {
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.projectId}>
+                <tr key={row.projectKey}>
                   <td>
                     {row.projectId} - {row.projectName}
                   </td>

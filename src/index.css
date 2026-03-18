@@ -158,8 +158,10 @@ button {
   display: grid;
   grid-template-columns: 1fr;
   align-items: center;
+  align-content: start;
   gap: 8px;
   width: 100%;
+  min-height: 108px;
 }
 
 .section-title-row {
@@ -359,6 +361,18 @@ button {
 .settings-list {
   display: grid;
   gap: 8px;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.checkbox-row input {
+  width: auto;
+  margin: 0;
 }
 
 .empty {

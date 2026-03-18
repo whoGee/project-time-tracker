@@ -1,4 +1,5 @@
 export interface Project {
+  key: string;
   id: string;
   name: string;
   createdAt: number;
@@ -7,7 +8,7 @@ export interface Project {
 
 export interface Session {
   id: string;
-  projectId: string;
+  projectKey: string;
   startTs: number;
   endTs: number;
   durationSec: number;
@@ -16,13 +17,14 @@ export interface Session {
 
 export interface ActiveSession {
   sessionId: string;
-  projectId: string;
+  projectKey: string;
   startTs: number;
   heartbeatTs: number;
 }
 
 export interface MetaState {
   activeSession: ActiveSession | null;
+  includeProjectKeyInExports: boolean;
 }
 
 export interface BackupData {
@@ -32,12 +34,13 @@ export interface BackupData {
 }
 
 export interface SessionUpdateInput {
-  projectId?: string;
+  projectKey?: string;
   startTs?: number;
   endTs?: number;
 }
 
 export interface SummaryRow {
+  projectKey: string;
   projectId: string;
   projectName: string;
   durationSec: number;

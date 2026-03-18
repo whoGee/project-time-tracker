@@ -16,10 +16,10 @@ export interface TrackerContextValue {
   activeElapsedSec: number;
   activeProject: Project | null;
   addProject: (id: string, name: string) => Promise<void>;
-  removeProject: (projectId: string) => Promise<void>;
-  hideProjectFromTracker: (projectId: string) => Promise<void>;
-  deleteProjectWithSavedData: (projectId: string) => Promise<void>;
-  switchProject: (projectId: string) => Promise<void>;
+  removeProject: (projectKey: string) => Promise<void>;
+  hideProjectFromTracker: (projectKey: string) => Promise<void>;
+  deleteProjectWithSavedData: (projectKey: string) => Promise<void>;
+  switchProject: (projectKey: string) => Promise<void>;
   stopTracking: () => Promise<void>;
   updateSessionRecord: (sessionId: string, updates: SessionUpdateInput) => Promise<void>;
   deleteSessionRecord: (sessionId: string) => Promise<void>;
@@ -27,6 +27,8 @@ export interface TrackerContextValue {
   exportFullData: typeof exportAllData;
   clearAllData: () => Promise<void>;
   importFullData: (projects: Project[], sessions: Session[], meta: MetaState) => Promise<void>;
+  includeProjectKeyInExports: boolean;
+  setIncludeProjectKeyInExports: (enabled: boolean) => Promise<void>;
 }
 
 export const TrackerContext = createContext<TrackerContextValue | null>(null);

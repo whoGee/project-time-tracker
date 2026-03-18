@@ -21,15 +21,28 @@ function asSafeInt(value: unknown): number | null {
   return Number.isInteger(value) && Number.isFinite(value) ? (value as number) : null;
 }
 
+function asSafeBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
+function duplicateProjectPairKey(projectId: string, projectName: string): string {
+  return `${projectId}\u0000${projectName}`;
+}
+
 function validateProject(raw: unknown, index: number): Project {
   if (!isRecord(raw)) {
     throw new Error(`Project ${index + 1} must be an object.`);
   }
 
+  const key = asSafeString(raw.key) ?? asSafeString(raw.id);
   const id = asSafeString(raw.id);
   const name = asSafeString(raw.name);
   const createdAt = asSafeInt(raw.createdAt);
+  const hiddenFromTracker = asSafeBoolean(raw.hiddenFromTracker) ?? undefined;
 
+  if (!key) {
+    throw new Error(`Project ${index + 1} is missing a valid key.`);
+  }
   if (!id) {
     throw new Error(`Project ${index + 1} is missing a valid id.`);
   }
@@ -40,16 +53,16 @@ function validateProject(raw: unknown, index: number): Project {
     throw new Error(`Project ${id} has invalid createdAt.`);
   }
 
-  return { id, name, createdAt };
+  return { key, id, name, createdAt, hiddenFromTracker };
 }
 
-function validateSession(raw: unknown, index: number, projectIds: Set<string>): Session {
+function validateSession(raw: unknown, index: number, projectKeys: Set<string>): Session {
   if (!isRecord(raw)) {
     throw new Error(`Session ${index + 1} must be an object.`);
   }
 
   const id = asSafeString(raw.id);
-  const projectId = asSafeString(raw.projectId);
+  const projectKey = asSafeString(raw.projectKey) ?? asSafeString(raw.projectId);
   const startTs = asSafeInt(raw.startTs);
   const endTs = asSafeInt(raw.endTs);
   const durationSec = asSafeInt(raw.durationSec);
@@ -58,11 +71,11 @@ function validateSession(raw: unknown, index: number, projectIds: Set<string>): 
   if (!id) {
     throw new Error(`Session ${index + 1} is missing a valid id.`);
   }
-  if (!projectId) {
-    throw new Error(`Session ${id} is missing a valid project id.`);
+  if (!projectKey) {
+    throw new Error(`Session ${id} is missing a valid project key.`);
   }
-  if (!projectIds.has(projectId)) {
-    throw new Error(`Session ${id} references unknown project "${projectId}".`);
+  if (!projectKeys.has(projectKey)) {
+    throw new Error(`Session ${id} references unknown project "${projectKey}".`);
   }
   if (startTs === null || endTs === null || startTs < 0 || endTs < 0 || endTs < startTs) {
     throw new Error(`Session ${id} has invalid timestamps.`);
@@ -83,10 +96,10 @@ function validateSession(raw: unknown, index: number, projectIds: Set<string>): 
     throw new Error(`Session ${id} dateKey does not match start timestamp.`);
   }
 
-  return { id, projectId, startTs, endTs, durationSec, dateKey };
+  return { id, projectKey, startTs, endTs, durationSec, dateKey };
 }
 
-function validateActiveSession(raw: unknown, projectIds: Set<string>): ActiveSession | null {
+function validateActiveSession(raw: unknown, projectKeys: Set<string>): ActiveSession | null {
   if (raw === null || typeof raw === "undefined") {
     return null;
   }
@@ -95,21 +108,21 @@ function validateActiveSession(raw: unknown, projectIds: Set<string>): ActiveSes
   }
 
   const sessionId = asSafeString(raw.sessionId);
-  const projectId = asSafeString(raw.projectId);
+  const projectKey = asSafeString(raw.projectKey) ?? asSafeString(raw.projectId);
   const startTs = asSafeInt(raw.startTs);
   const heartbeatTs = asSafeInt(raw.heartbeatTs);
 
-  if (!sessionId || !projectId) {
+  if (!sessionId || !projectKey) {
     throw new Error("meta.activeSession is missing required fields.");
   }
-  if (!projectIds.has(projectId)) {
-    throw new Error(`meta.activeSession references unknown project "${projectId}".`);
+  if (!projectKeys.has(projectKey)) {
+    throw new Error(`meta.activeSession references unknown project "${projectKey}".`);
   }
   if (startTs === null || heartbeatTs === null || startTs < 0 || heartbeatTs < startTs) {
     throw new Error("meta.activeSession has invalid timestamps.");
   }
 
-  return { sessionId, projectId, startTs, heartbeatTs };
+  return { sessionId, projectKey, startTs, heartbeatTs };
 }
 
 export function validateBackupData(input: unknown): BackupData {
@@ -135,16 +148,22 @@ export function validateBackupData(input: unknown): BackupData {
   }
 
   const projects = rawProjects.map((project, index) => validateProject(project, index));
-  const projectIds = new Set<string>();
+  const projectKeys = new Set<string>();
+  const seenProjectPairs = new Set<string>();
   for (const project of projects) {
-    if (projectIds.has(project.id)) {
-      throw new Error(`Duplicate project id "${project.id}" in backup.`);
+    if (projectKeys.has(project.key)) {
+      throw new Error(`Duplicate project key "${project.key}" in backup.`);
     }
-    projectIds.add(project.id);
+    const pairKey = duplicateProjectPairKey(project.id, project.name);
+    if (seenProjectPairs.has(pairKey)) {
+      throw new Error(`Duplicate project combination "${project.id} - ${project.name}" in backup.`);
+    }
+    projectKeys.add(project.key);
+    seenProjectPairs.add(pairKey);
   }
 
   const sessions = rawSessions.map((session, index) =>
-    validateSession(session, index, projectIds)
+    validateSession(session, index, projectKeys)
   );
 
   const seenSessionIds = new Set<string>();
@@ -157,7 +176,8 @@ export function validateBackupData(input: unknown): BackupData {
 
   const metaContainer = isRecord(rawMeta) ? rawMeta : {};
   const meta: MetaState = {
-    activeSession: validateActiveSession(metaContainer.activeSession, projectIds),
+    activeSession: validateActiveSession(metaContainer.activeSession, projectKeys),
+    includeProjectKeyInExports: asSafeBoolean(metaContainer.includeProjectKeyInExports) ?? false,
   };
 
   return { projects, sessions, meta };
