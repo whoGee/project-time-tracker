@@ -228,3 +228,21 @@ Purpose: track all updates before each commit and deployment.
 
 ### Notes
 - Source branch push and version tag follow deployment in this release step.
+
+## 2026-03-22 21:30 (local) - commit
+
+### Summary
+- Prepared `v0.3.0` with improved tracker drag-and-drop feedback, independent column behavior, and persisted manual tile layout.
+
+### Changes
+- `package.json`, `package-lock.json`: bumped app version to `0.3.0`.
+- `src/routes/TrackerPage.tsx`: replaced flat tracker tile ordering with two independent column lists, added explicit before/after/end drop targets, and persisted manual layout in browser local storage.
+- `src/index.css`: added tile hover/drop indicators, stronger drop confirmation animation, and interactive end-of-column drop zones for both columns.
+
+### Verification
+- `npm run lint`: pass
+- `npm test`: pass
+- `npm run build`: pass
+
+### Notes
+- Manual tracker tile order now survives browser refresh on the same origin/profile.
