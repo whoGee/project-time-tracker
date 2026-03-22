@@ -246,3 +246,18 @@ Purpose: track all updates before each commit and deployment.
 
 ### Notes
 - Manual tracker tile order now survives browser refresh on the same origin/profile.
+
+## 2026-03-22 21:32 (local) - deploy
+
+### Summary
+- Deployed `v0.3.0` to GitHub Pages.
+
+### Changes
+- Deploy target: `gh-pages` branch from local `dist/` build.
+- Includes tracker drag-and-drop hover/drop feedback, independent tile columns, and persisted manual tile layout.
+
+### Verification
+- `npm run deploy`: pass (`Published`)
+
+### Notes
+- Source branch `main` already pushed at release commit `1dd8a59` before deployment.
